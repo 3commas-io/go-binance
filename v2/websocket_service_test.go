@@ -795,6 +795,12 @@ func (s *websocketServiceTestSuite) assertUserDataEvent(e, a *WsUserDataEvent) {
 	s.assertBalanceUpdate(&e.BalanceUpdate, &a.BalanceUpdate)
 }
 
+func (s *websocketServiceTestSuite) assertWsCombinedUserDataEvent(e, a *WsCombinedUserDataEvent) {
+	r := s.r()
+	s.assertUserDataEvent(&e.Data, &a.Data)
+	r.Equal(e.Stream, a.Stream, "Stream")
+}
+
 func (s *websocketServiceTestSuite) testWsUserDataServe(data []byte, expectedEvent *WsUserDataEvent) {
 	fakeErrMsg := "fake error"
 	s.mockWsServe(data, errors.New(fakeErrMsg))
@@ -802,6 +808,22 @@ func (s *websocketServiceTestSuite) testWsUserDataServe(data []byte, expectedEve
 
 	doneC, stopC, err := WsUserDataServe("fakeListenKey", func(event *WsUserDataEvent) {
 		s.assertUserDataEvent(expectedEvent, event)
+	}, func(err error) {
+		s.r().EqualError(err, fakeErrMsg)
+	})
+
+	s.r().NoError(err)
+	stopC <- struct{}{}
+	<-doneC
+}
+
+func (s *websocketServiceTestSuite) testWsCombinedUserDataServe(data []byte, expectedEvent *WsCombinedUserDataEvent) {
+	fakeErrMsg := "fake error"
+	s.mockWsServe(data, errors.New(fakeErrMsg))
+	defer s.assertWsServe()
+
+	doneC, stopC, err := WsCombinedUserDataServe([]string{"fakeListenKey"}, func(event *WsCombinedUserDataEvent) {
+		s.assertWsCombinedUserDataEvent(expectedEvent, event)
 	}, func(err error) {
 		s.r().EqualError(err, fakeErrMsg)
 	})
@@ -904,7 +926,8 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeOrderUpdate() {
 			TransactionTime:   1629771130463,
 			TradeId:           1473,
 			IsInOrderBook:     false,
-			IsMaker:           true,
+			IsMaker:           false,
+			IsBest:            true,
 			CreateTime:        1629771130463,
 			FilledQuoteVolume: "17.53700000",
 			LatestQuoteVolume: "17.53700000",
@@ -912,6 +935,122 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeOrderUpdate() {
 		},
 	}
 	s.testWsUserDataServe(data, expectedEvent)
+}
+
+func (s *websocketServiceTestSuite) TestWsCombinedUserDataServeAccountUpdate() {
+	data := []byte(`{
+	   "stream": "fakeListenKey",
+	   "data": {
+		   "e":"outboundAccountPosition",
+		   "E":1629771130464,
+		   "u":1629771130463,
+		   "B":[
+			  {
+				 "a":"LTC",
+				 "f":"503.70000000",
+				 "l":"0.00000000"
+			  }
+		   ]
+		}
+	}`)
+	expectedEvent := &WsCombinedUserDataEvent{
+		Stream: "fakeListenKey",
+		Data: WsUserDataEvent{
+			Event:             "outboundAccountPosition",
+			Time:              1629771130464,
+			AccountUpdateTime: 1629771130463,
+			AccountUpdate: WsAccountUpdateList{
+				[]WsAccountUpdate{
+					{
+						"LTC",
+						"503.70000000",
+						"0.00000000",
+					},
+				},
+			},
+		},
+	}
+	s.testWsCombinedUserDataServe(data, expectedEvent)
+}
+
+func (s *websocketServiceTestSuite) TestWsCombinedUserDataServeOrderUpdate() {
+	data := []byte(`{
+	   "stream": "fakeListenKey",
+	   "data": {
+		   "e":"executionReport",
+		   "E":1629771130464,
+		   "s":"LTCUSDT",
+		   "c":"MRx05dQCeTigiV1u1rfhUs",
+		   "S":"BUY",
+		   "o":"MARKET",
+		   "f":"GTC",
+		   "q":"0.10000000",
+		   "p":"0.00000000",
+		   "P":"0.00000000",
+		   "F":"0.00000000",
+		   "g":-1,
+		   "C":"",
+		   "x":"TRADE",
+		   "X":"FILLED",
+		   "r":"NONE",
+		   "i":18997,
+		   "l":"0.10000000",
+		   "z":"0.10000000",
+		   "L":"175.37000000",
+		   "n":"0.00000000",
+		   "N":"LTC",
+		   "T":1629771130463,
+		   "t":1473,
+		   "I":314739191,
+		   "w":false,
+		   "m":false,
+		   "M":true,
+		   "O":1629771130463,
+		   "Z":"17.53700000",
+		   "Y":"17.53700000",
+		   "Q":"0.00000000"
+		}
+	}`)
+	expectedEvent := &WsCombinedUserDataEvent{
+		Stream: "fakeListenKey",
+		Data: WsUserDataEvent{
+			Event:           "executionReport",
+			Time:            1629771130464,
+			TransactionTime: 1629771130463,
+			OrderUpdate: WsOrderUpdate{
+				Symbol:            "LTCUSDT",
+				ClientOrderId:     "MRx05dQCeTigiV1u1rfhUs",
+				Side:              "BUY",
+				Type:              "MARKET",
+				TimeInForce:       "GTC",
+				Volume:            "0.10000000",
+				Price:             "0.00000000",
+				StopPrice:         "0.00000000",
+				IceBergVolume:     "0.00000000",
+				OrderListId:       -1,
+				OrigCustomOrderId: "",
+				ExecutionType:     "TRADE",
+				Status:            "FILLED",
+				RejectReason:      "NONE",
+				Id:                18997,
+				LatestVolume:      "0.10000000",
+				FilledVolume:      "0.10000000",
+				LatestPrice:       "175.37000000",
+				FeeAsset:          "LTC",
+				FeeCost:           "0.00000000",
+				TransactionTime:   1629771130463,
+				TradeId:           1473,
+				IsInOrderBook:     false,
+				IsMaker:           false,
+				IsBest:            true,
+				CreateTime:        1629771130463,
+				FilledQuoteVolume: "17.53700000",
+				LatestQuoteVolume: "17.53700000",
+				QuoteVolume:       "0.00000000",
+			},
+		},
+	}
+	s.testWsCombinedUserDataServe(data, expectedEvent)
 }
 
 func (s *websocketServiceTestSuite) TestWsMarketStatServe() {

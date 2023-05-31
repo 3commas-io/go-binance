@@ -475,6 +475,12 @@ type WsCombinedTradeEvent struct {
 	Data   WsTradeEvent `json:"data"`
 }
 
+// WsCombinedUserDataEvent define user data event
+type WsCombinedUserDataEvent struct {
+	Stream string          `json:"stream"`
+	Data   WsUserDataEvent `json:"data"`
+}
+
 // WsUserDataEvent define user data event
 type WsUserDataEvent struct {
 	Event             UserDataEventType `json:"e"`
@@ -529,6 +535,7 @@ type WsOrderUpdate struct {
 	TradeId                 int64           `json:"t"`
 	IsInOrderBook           bool            `json:"w"` // is the order in the order book?
 	IsMaker                 bool            `json:"m"` // is this order maker?
+	IsBest                  bool            `json:"M"` // is best price match?
 	CreateTime              int64           `json:"O"`
 	FilledQuoteVolume       string          `json:"Z"` // the quote volume that already filled
 	LatestQuoteVolume       string          `json:"Y"` // the quote volume for the latest trade
@@ -610,6 +617,90 @@ func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler Err
 			event.OrderUpdate.FeeAsset = j.Get("N").MustString()
 		case UserDataEventTypeListStatus:
 			err = json.Unmarshal(message, &event.OCOUpdate)
+			if err != nil {
+				errHandler(err)
+				return
+			}
+		}
+
+		handler(event)
+	}
+	return wsServe(cfg, wsHandler, errHandler)
+}
+
+// WsCombinedUserDataHandler handle WsCombinedUserDataEvent
+type WsCombinedUserDataHandler func(event *WsCombinedUserDataEvent)
+
+// WsCombinedUserDataServe serve user data handler with listen key
+func WsCombinedUserDataServe(listenKey []string, handler WsCombinedUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+	endpoint := getCombinedEndpoint()
+	for s := range listenKey {
+		endpoint += fmt.Sprintf("%s", strings.ToLower(listenKey[s])) + "/"
+	}
+	endpoint = endpoint[:len(endpoint)-1]
+	cfg := newWsConfig(endpoint)
+	wsHandler := func(message []byte) {
+		j, err := newJSON(message)
+		if err != nil {
+			errHandler(err)
+			return
+		}
+
+		event := new(WsCombinedUserDataEvent)
+
+		err = json.Unmarshal(message, &event)
+		if err != nil {
+			errHandler(err)
+			return
+		}
+
+		switch UserDataEventType(j.Get("data").Get("e").MustString()) {
+		case UserDataEventTypeOutboundAccountPosition:
+			data, err := j.Get("data").MarshalJSON()
+			if err != nil {
+				errHandler(err)
+				return
+			}
+			err = json.Unmarshal(data, &event.Data.AccountUpdate)
+			if err != nil {
+				errHandler(err)
+				return
+			}
+		case UserDataEventTypeBalanceUpdate:
+			data, err := j.Get("data").MarshalJSON()
+			if err != nil {
+				errHandler(err)
+				return
+			}
+			err = json.Unmarshal(data, &event.Data.BalanceUpdate)
+			if err != nil {
+				errHandler(err)
+				return
+			}
+		case UserDataEventTypeExecutionReport:
+			data, err := j.Get("data").MarshalJSON()
+			if err != nil {
+				errHandler(err)
+				return
+			}
+			err = json.Unmarshal(data, &event.Data.OrderUpdate)
+			if err != nil {
+				errHandler(err)
+				return
+			}
+			// Unmarshal has case sensitive problem
+			event.Data.TransactionTime = j.Get("data").Get("T").MustInt64()
+			event.Data.OrderUpdate.TransactionTime = j.Get("data").Get("T").MustInt64()
+			event.Data.OrderUpdate.Id = j.Get("data").Get("i").MustInt64()
+			event.Data.OrderUpdate.TradeId = j.Get("data").Get("t").MustInt64()
+			event.Data.OrderUpdate.FeeAsset = j.Get("data").Get("N").MustString()
+		case UserDataEventTypeListStatus:
+			data, err := j.Get("data").MarshalJSON()
+			if err != nil {
+				errHandler(err)
+				return
+			}
+			err = json.Unmarshal(data, &event.Data.OCOUpdate)
 			if err != nil {
 				errHandler(err)
 				return
