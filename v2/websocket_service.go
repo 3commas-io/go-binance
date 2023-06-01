@@ -635,7 +635,7 @@ type WsCombinedUserDataHandler func(event *WsCombinedUserDataEvent)
 func WsCombinedUserDataServe(listenKey []string, handler WsCombinedUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
 	endpoint := getCombinedEndpoint()
 	for s := range listenKey {
-		endpoint += fmt.Sprintf("%s", strings.ToLower(listenKey[s])) + "/"
+		endpoint += fmt.Sprintf("%s", listenKey[s]) + "/"
 	}
 	endpoint = endpoint[:len(endpoint)-1]
 	cfg := newWsConfig(endpoint)
