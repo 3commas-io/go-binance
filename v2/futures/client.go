@@ -6,9 +6,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -201,8 +202,8 @@ func getApiEndpoint() string {
 // NewClient initialize an API client instance with API key and secret key.
 // You should always call this function before using this SDK.
 // Services will be created by the form client.NewXXXService().
-func NewClient(apiKey, secretKey string) *Client {
-	return &Client{
+func NewClient(apiKey, secretKey string, sf func(raw string) (string, error)) *Client {
+	cl := Client{
 		APIKey:     apiKey,
 		SecretKey:  secretKey,
 		BaseURL:    getApiEndpoint(),
@@ -210,28 +211,36 @@ func NewClient(apiKey, secretKey string) *Client {
 		HTTPClient: http.DefaultClient,
 		Logger:     log.New(os.Stderr, "Binance-golang ", log.LstdFlags),
 	}
+
+	if cl.signFunc == nil {
+		cl.signFunc = func(raw string) (string, error) {
+			mac := hmac.New(sha256.New, []byte(cl.SecretKey))
+			_, err := mac.Write([]byte(raw))
+			if err != nil {
+				return "", err
+			}
+			return hex.EncodeToString(mac.Sum(nil)), nil
+		}
+	}
+
+	return &cl
 }
 
 // NewProxiedClient passing a proxy url
-func NewProxiedClient(apiKey, secretKey, proxyUrl string) *Client {
+func NewProxiedClient(apiKey, secretKey, proxyUrl string, sf func(raw string) (string, error)) *Client {
 	proxy, err := url.Parse(proxyUrl)
 	if err != nil {
 		log.Fatal(err)
 	}
-	tr := &http.Transport{
-		Proxy:           http.ProxyURL(proxy),
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	return &Client{
-		APIKey:    apiKey,
-		SecretKey: secretKey,
-		BaseURL:   getApiEndpoint(),
-		UserAgent: "Binance/golang",
-		HTTPClient: &http.Client{
-			Transport: tr,
+	cl := NewClient(apiKey, secretKey, sf)
+	cl.HTTPClient = &http.Client{
+		Transport: &http.Transport{
+			Proxy:           http.ProxyURL(proxy),
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
-		Logger: log.New(os.Stderr, "Binance-golang ", log.LstdFlags),
 	}
+
+	return cl
 }
 
 type doFunc func(req *http.Request) (*http.Response, error)
@@ -247,6 +256,7 @@ type Client struct {
 	Logger     *log.Logger
 	TimeOffset int64
 	do         doFunc
+	signFunc   func(raw string) (string, error)
 }
 
 func (c *Client) debug(format string, v ...interface{}) {
@@ -288,14 +298,12 @@ func (c *Client) parseRequest(r *request, opts ...RequestOption) (err error) {
 	}
 
 	if r.secType == secTypeSigned {
-		raw := fmt.Sprintf("%s%s", queryString, bodyString)
-		mac := hmac.New(sha256.New, []byte(c.SecretKey))
-		_, err = mac.Write([]byte(raw))
+		sign, err := c.signFunc(fmt.Sprintf("%s%s", queryString, bodyString))
 		if err != nil {
 			return err
 		}
 		v := url.Values{}
-		v.Set(signatureKey, fmt.Sprintf("%x", (mac.Sum(nil))))
+		v.Set(signatureKey, sign)
 		if queryString == "" {
 			queryString = v.Encode()
 		} else {
@@ -333,7 +341,7 @@ func (c *Client) callAPI(ctx context.Context, r *request, opts ...RequestOption)
 	if err != nil {
 		return []byte{}, &http.Header{}, err
 	}
-	data, err = ioutil.ReadAll(res.Body)
+	data, err = io.ReadAll(res.Body)
 	if err != nil {
 		return []byte{}, &http.Header{}, err
 	}
