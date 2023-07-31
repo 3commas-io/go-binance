@@ -1235,6 +1235,23 @@ func (s *websocketServiceTestSuite) testWsUserDataServe(data []byte, expectedEve
 	<-doneC
 }
 
+func (s *websocketServiceTestSuite) testWsCombinedUserDataServe(data []byte, expectedEvent *WsCombinedUserDataEvent) {
+	fakeErrMsg := "fake error"
+	s.mockWsServe(data, errors.New(fakeErrMsg))
+	defer s.assertWsServe()
+
+	doneC, stopC, err := WsCombinedUserDataServe([]string{"fakeListenKey"}, func(event *WsCombinedUserDataEvent) {
+		s.assertCombinedUserDataEvent(expectedEvent, event)
+	},
+		func(err error) {
+			s.r().EqualError(err, fakeErrMsg)
+		})
+
+	s.r().NoError(err)
+	stopC <- struct{}{}
+	<-doneC
+}
+
 func (s *websocketServiceTestSuite) TestWsUserDataServeStreamExpired() {
 	data := []byte(`{
 		"e": "listenKeyExpired",
@@ -1484,6 +1501,96 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeOrderTradeUpdate() {
 	s.testWsUserDataServe(data, expectedEvent)
 }
 
+func (s *websocketServiceTestSuite) TestWsCombinedUserDataServeOrderTradeUpdate() {
+	data := []byte(`{
+		"stream":"fakeListenKey",
+		"data": {	
+			"e":"ORDER_TRADE_UPDATE",
+			"E":1568879465651,
+			"T":1568879465650,
+			"i": "SfsR",
+			"o":{
+				"s":"BTCUSD_200925",
+				"c":"TEST",
+				"S":"SELL",
+				"o":"TRAILING_STOP_MARKET",
+				"f":"GTC",
+				"q":"2",
+				"p":"0",
+				"ap":"0",
+				"sp":"9103.1",
+				"x":"NEW",
+				"X":"NEW",
+				"i":8888888,
+				"l":"0",
+				"z":"0",
+				"L":"0",
+				"ma": "BTC",
+				"N":"BTC",
+				"n":"0",
+				"T":1591274595442,
+				"t":0,
+				"rp": "0",
+				"b":"0",
+				"a":"0",
+				"m":false,
+				"R":false,
+				"wt":"CONTRACT_PRICE",
+				"ot":"TRAILING_STOP_MARKET",
+				"ps":"LONG",
+				"cp":false,
+				"AP":"9476.8",
+				"cr":"5.0",
+				"pP": false
+			}
+		}
+	}`)
+	expectedEvent := &WsCombinedUserDataEvent{
+		Stream: "fakeListenKey",
+		Data: WsUserDataEvent{
+			Event:           "ORDER_TRADE_UPDATE",
+			Time:            1568879465651,
+			TransactionTime: 1568879465650,
+			Alias:           "SfsR",
+			OrderTradeUpdate: WsOrderTradeUpdate{
+				Symbol:               "BTCUSD_200925",
+				ClientOrderID:        "TEST",
+				Side:                 "SELL",
+				Type:                 "TRAILING_STOP_MARKET",
+				TimeInForce:          "GTC",
+				OriginalQty:          "2",
+				OriginalPrice:        "0",
+				AveragePrice:         "0",
+				StopPrice:            "9103.1",
+				ExecutionType:        "NEW",
+				Status:               "NEW",
+				ID:                   8888888,
+				LastFilledQty:        "0",
+				AccumulatedFilledQty: "0",
+				LastFilledPrice:      "0",
+				MarginAsset:          "BTC",
+				CommissionAsset:      "BTC",
+				Commission:           "0",
+				TradeTime:            1591274595442,
+				TradeID:              0,
+				RealizedPnL:          "0",
+				BidsNotional:         "0",
+				AsksNotional:         "0",
+				IsMaker:              false,
+				IsReduceOnly:         false,
+				WorkingType:          "CONTRACT_PRICE",
+				OriginalType:         "TRAILING_STOP_MARKET",
+				PositionSide:         "LONG",
+				IsClosingPosition:    false,
+				ActivationPrice:      "9476.8",
+				CallbackRate:         "5.0",
+				IsProtected:          false,
+			},
+		},
+	}
+	s.testWsCombinedUserDataServe(data, expectedEvent)
+}
+
 func (s *websocketServiceTestSuite) assertUserDataEvent(e, a *WsUserDataEvent) {
 	r := s.r()
 	r.Equal(e.Event, a.Event, "Event")
@@ -1496,6 +1603,21 @@ func (s *websocketServiceTestSuite) assertUserDataEvent(e, a *WsUserDataEvent) {
 	r.Equal(e.TransactionTime, a.TransactionTime, "TransactionTime")
 	s.assertAccountUpdate(e.AccountUpdate, a.AccountUpdate)
 	s.assertOrderTradeUpdate(e.OrderTradeUpdate, a.OrderTradeUpdate)
+}
+
+func (s *websocketServiceTestSuite) assertCombinedUserDataEvent(e, a *WsCombinedUserDataEvent) {
+	r := s.r()
+	r.Equal(e.Stream, a.Stream, "stream")
+	r.Equal(e.Data.Event, a.Data.Event, "Event")
+	r.Equal(e.Data.Time, a.Data.Time, "Time")
+	r.Equal(e.Data.CrossWalletBalance, a.Data.CrossWalletBalance, "CrossWalletBalance")
+	for i, e := range e.Data.MarginCallPositions {
+		a := a.Data.MarginCallPositions[i]
+		s.assertPosition(e, a)
+	}
+	r.Equal(e.Data.TransactionTime, a.Data.TransactionTime, "TransactionTime")
+	s.assertAccountUpdate(e.Data.AccountUpdate, a.Data.AccountUpdate)
+	s.assertOrderTradeUpdate(e.Data.OrderTradeUpdate, a.Data.OrderTradeUpdate)
 }
 
 func (s *websocketServiceTestSuite) assertPosition(e, a WsPosition) {

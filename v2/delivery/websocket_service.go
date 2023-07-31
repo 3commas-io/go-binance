@@ -10,8 +10,10 @@ import (
 
 // Endpoints
 const (
-	baseWsMainUrl    = "wss://dstream.binance.com/ws"
-	baseWsTestnetUrl = "wss://dstream.binancefuture.com/ws"
+	baseWsMainUrl          = "wss://dstream.binance.com/ws"
+	baseWsTestnetUrl       = "wss://dstream.binancefuture.com/ws"
+	baseCombinedMainURL    = "wss://dstream.binance.com/stream?streams="
+	baseCombinedTestnetURL = "wss://dstream.binancefuture.com/stream?streams="
 )
 
 var (
@@ -29,6 +31,14 @@ func getWsEndpoint() string {
 		return baseWsTestnetUrl
 	}
 	return baseWsMainUrl
+}
+
+// getCombinedEndpoint return the base endpoint of the combined stream according the UseTestnet flag
+func getCombinedEndpoint() string {
+	if UseTestnet {
+		return baseCombinedTestnetURL
+	}
+	return baseCombinedMainURL
 }
 
 // WsAggTradeEvent define websocket aggTrde event.
@@ -647,6 +657,12 @@ func wsDepthServe(symbol string, levels string, rate *time.Duration, handler WsD
 	return wsServe(cfg, wsHandler, errHandler)
 }
 
+// WsCombinedUserDataEvent define user data event
+type WsCombinedUserDataEvent struct {
+	Stream string          `json:"stream"`
+	Data   WsUserDataEvent `json:"data"`
+}
+
 // WsUserDataEvent define user data event
 type WsUserDataEvent struct {
 	Event               UserDataEventType  `json:"e"`
@@ -739,6 +755,29 @@ func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler Err
 	cfg := newWsConfig(endpoint)
 	wsHandler := func(message []byte) {
 		event := new(WsUserDataEvent)
+		err := json.Unmarshal(message, event)
+		if err != nil {
+			errHandler(err)
+			return
+		}
+		handler(event)
+	}
+	return wsServe(cfg, wsHandler, errHandler)
+}
+
+// WsCombinedUserDataHandler handle WsCombinedUserDataEvent
+type WsCombinedUserDataHandler func(event *WsCombinedUserDataEvent)
+
+// WsCombinedUserDataServe serve users data handler with listen keys
+func WsCombinedUserDataServe(listenKeys []string, handler WsCombinedUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+	endpoint := getCombinedEndpoint()
+	for s := range listenKeys {
+		endpoint += fmt.Sprintf("%s", listenKeys[s]) + "/"
+	}
+	endpoint = endpoint[:len(endpoint)-1]
+	cfg := newWsConfig(endpoint)
+	wsHandler := func(message []byte) {
+		event := new(WsCombinedUserDataEvent)
 		err := json.Unmarshal(message, event)
 		if err != nil {
 			errHandler(err)

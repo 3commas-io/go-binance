@@ -956,6 +956,12 @@ func WsCompositiveIndexServe(symbol string, handler WsCompositeIndexHandler, err
 	return wsServe(cfg, wsHandler, errHandler)
 }
 
+// WsCombinedUserDataEvent define user data event
+type WsCombinedUserDataEvent struct {
+	Stream string          `json:"stream"`
+	Data   WsUserDataEvent `json:"data"`
+}
+
 // WsUserDataEvent define user data event
 type WsUserDataEvent struct {
 	Event               UserDataEventType     `json:"e"`
@@ -1046,6 +1052,29 @@ func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler Err
 	cfg := newWsConfig(endpoint)
 	wsHandler := func(message []byte) {
 		event := new(WsUserDataEvent)
+		err := json.Unmarshal(message, event)
+		if err != nil {
+			errHandler(err)
+			return
+		}
+		handler(event)
+	}
+	return wsServe(cfg, wsHandler, errHandler)
+}
+
+// WsCombinedUserDataHandler handle WsCombinedUserDataEvent
+type WsCombinedUserDataHandler func(event *WsCombinedUserDataEvent)
+
+// WsCombinedUserDataServe serve users data handler with listen keys
+func WsCombinedUserDataServe(listenKeys []string, handler WsCombinedUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+	endpoint := getCombinedEndpoint()
+	for s := range listenKeys {
+		endpoint += fmt.Sprintf("%s", listenKeys[s]) + "/"
+	}
+	endpoint = endpoint[:len(endpoint)-1]
+	cfg := newWsConfig(endpoint)
+	wsHandler := func(message []byte) {
+		event := new(WsCombinedUserDataEvent)
 		err := json.Unmarshal(message, event)
 		if err != nil {
 			errHandler(err)
