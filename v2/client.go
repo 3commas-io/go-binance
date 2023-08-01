@@ -301,12 +301,12 @@ func NewProxiedClient(apiKey, secretKey, proxyUrl string) *Client {
 
 // NewFuturesClient initialize client for futures API
 func NewFuturesClient(apiKey, secretKey string) *futures.Client {
-	return futures.NewClient(apiKey, secretKey)
+	return futures.NewClient(apiKey, secretKey, nil)
 }
 
 // NewDeliveryClient initialize client for coin-M futures API
 func NewDeliveryClient(apiKey, secretKey string) *delivery.Client {
-	return delivery.NewClient(apiKey, secretKey)
+	return delivery.NewClient(apiKey, secretKey, nil)
 }
 
 type doFunc func(req *http.Request) (*http.Response, error)
