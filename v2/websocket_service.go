@@ -2,6 +2,7 @@ package binance
 
 import (
 	"fmt"
+	"github.com/gorilla/websocket"
 	"strings"
 	"time"
 
@@ -572,7 +573,7 @@ type WsOCOOrder struct {
 type WsUserDataHandler func(event *WsUserDataEvent)
 
 // WsUserDataServe serve user data handler with listen key
-func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler ErrHandler, options ...func(c *websocket.Conn, timeout time.Duration)) (doneC, stopC chan struct{}, err error) {
 	endpoint := fmt.Sprintf("%s/%s", getWsEndpoint(), listenKey)
 	cfg := newWsConfig(endpoint)
 	wsHandler := func(message []byte) {
@@ -625,14 +626,14 @@ func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler Err
 
 		handler(event)
 	}
-	return wsServe(cfg, wsHandler, errHandler)
+	return wsServe(cfg, wsHandler, errHandler, options...)
 }
 
 // WsCombinedUserDataHandler handle WsCombinedUserDataEvent
 type WsCombinedUserDataHandler func(event *WsCombinedUserDataEvent)
 
 // WsCombinedUserDataServe serve user data handler with listen key
-func WsCombinedUserDataServe(listenKey []string, handler WsCombinedUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+func WsCombinedUserDataServe(listenKey []string, handler WsCombinedUserDataHandler, errHandler ErrHandler, options ...func(c *websocket.Conn, timeout time.Duration)) (doneC, stopC chan struct{}, err error) {
 	endpoint := getCombinedEndpoint()
 	for s := range listenKey {
 		endpoint += fmt.Sprintf("%s", listenKey[s]) + "/"
@@ -709,7 +710,7 @@ func WsCombinedUserDataServe(listenKey []string, handler WsCombinedUserDataHandl
 
 		handler(event)
 	}
-	return wsServe(cfg, wsHandler, errHandler)
+	return wsServe(cfg, wsHandler, errHandler, options...)
 }
 
 // WsMarketStatHandler handle websocket that push single market statistics for 24hr
