@@ -24,7 +24,7 @@ func newWsConfig(endpoint string) *WsConfig {
 	}
 }
 
-var wsServe = func(cfg *WsConfig, handler WsHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+var wsServe = func(cfg *WsConfig, handler WsHandler, errHandler ErrHandler, options ...func(c *websocket.Conn, timeout time.Duration)) (doneC, stopC chan struct{}, err error) {
 	Dialer := websocket.Dialer{
 		Proxy:             http.ProxyFromEnvironment,
 		HandshakeTimeout:  45 * time.Second,
@@ -44,8 +44,13 @@ var wsServe = func(cfg *WsConfig, handler WsHandler, errHandler ErrHandler) (don
 		// closed by the client.
 		defer close(doneC)
 		if WebsocketKeepalive {
-			KeepAlive(c, WebsocketTimeout)
+			keepAlive(c, WebsocketTimeout)
 		}
+
+		for _, option := range options {
+			option(c, WebsocketTimeout)
+		}
+
 		// Wait for the stopC channel to be closed.  We do that in a
 		// separate goroutine because ReadMessage is a blocking
 		// operation.
@@ -72,7 +77,7 @@ var wsServe = func(cfg *WsConfig, handler WsHandler, errHandler ErrHandler) (don
 	return
 }
 
-var KeepAlive = func(c *websocket.Conn, timeout time.Duration) {
+func keepAlive(c *websocket.Conn, timeout time.Duration) {
 	ticker := time.NewTicker(timeout)
 
 	lastResponse := time.Now()

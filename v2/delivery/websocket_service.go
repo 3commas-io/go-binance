@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"strings"
 	"time"
 )
@@ -750,7 +751,7 @@ type WsAccountConfigUpdate struct {
 type WsUserDataHandler func(event *WsUserDataEvent)
 
 // WsUserDataServe serve user data handler with listen key
-func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler ErrHandler, options ...func(c *websocket.Conn, timeout time.Duration)) (doneC, stopC chan struct{}, err error) {
 	endpoint := fmt.Sprintf("%s/%s", getWsEndpoint(), listenKey)
 	cfg := newWsConfig(endpoint)
 	wsHandler := func(message []byte) {
@@ -762,14 +763,14 @@ func WsUserDataServe(listenKey string, handler WsUserDataHandler, errHandler Err
 		}
 		handler(event)
 	}
-	return wsServe(cfg, wsHandler, errHandler)
+	return wsServe(cfg, wsHandler, errHandler, options...)
 }
 
 // WsCombinedUserDataHandler handle WsCombinedUserDataEvent
 type WsCombinedUserDataHandler func(event *WsCombinedUserDataEvent)
 
 // WsCombinedUserDataServe serve users data handler with listen keys
-func WsCombinedUserDataServe(listenKeys []string, handler WsCombinedUserDataHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+func WsCombinedUserDataServe(listenKeys []string, handler WsCombinedUserDataHandler, errHandler ErrHandler, options ...func(c *websocket.Conn, timeout time.Duration)) (doneC, stopC chan struct{}, err error) {
 	endpoint := getCombinedEndpoint()
 	for s := range listenKeys {
 		endpoint += fmt.Sprintf("%s", listenKeys[s]) + "/"
@@ -785,5 +786,5 @@ func WsCombinedUserDataServe(listenKeys []string, handler WsCombinedUserDataHand
 		}
 		handler(event)
 	}
-	return wsServe(cfg, wsHandler, errHandler)
+	return wsServe(cfg, wsHandler, errHandler, options...)
 }
