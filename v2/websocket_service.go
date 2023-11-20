@@ -545,7 +545,7 @@ type WsOrderUpdate struct {
 	StrategyId              int64           `json:"j"` // Strategy ID
 	StrategyType            int64           `json:"J"` // Strategy Type
 	WorkingTime             int64           `json:"W"` // Working Time
-	SelfTradePreventionMode string          `json:"V"`
+	SelfTradePreventionMode any             `json:"V"`
 }
 
 type WsOCOUpdate struct {

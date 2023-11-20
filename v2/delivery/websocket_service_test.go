@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"errors"
+	"github.com/gorilla/websocket"
 	"math/rand"
 	"testing"
 	"time"
@@ -11,7 +12,7 @@ import (
 
 type websocketServiceTestSuite struct {
 	baseTestSuite
-	origWsServe func(*WsConfig, WsHandler, ErrHandler) (chan struct{}, chan struct{}, error)
+	origWsServe func(*WsConfig, WsHandler, ErrHandler, ...func(c *websocket.Conn, timeout time.Duration)) (chan struct{}, chan struct{}, error)
 	serveCount  int
 }
 
@@ -29,7 +30,7 @@ func (s *websocketServiceTestSuite) TearDownTest() {
 }
 
 func (s *websocketServiceTestSuite) mockWsServe(data []byte, err error) {
-	wsServe = func(cfg *WsConfig, handler WsHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, innerErr error) {
+	wsServe = func(cfg *WsConfig, handler WsHandler, errHandler ErrHandler, options ...func(c *websocket.Conn, timeout time.Duration)) (doneC, stopC chan struct{}, innerErr error) {
 		s.serveCount++
 		doneC = make(chan struct{})
 		stopC = make(chan struct{})
