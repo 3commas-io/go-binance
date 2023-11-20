@@ -1,4 +1,4 @@
-package delivery
+package options
 
 import (
 	"bytes"
@@ -6,10 +6,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -25,6 +24,9 @@ type SideType string
 
 // PositionSideType define position side type of order
 type PositionSideType string
+
+// OptionSideType define option side type of order
+type OptionSideType string
 
 // OrderType define order type
 type OrderType string
@@ -59,15 +61,21 @@ type WorkingType string
 // MarginType define margin type
 type MarginType string
 
+// ContractType define contract type
+type ContractType string
+
 // UserDataEventType define user data event type
 type UserDataEventType string
 
 // UserDataEventReasonType define reason type for user data event
 type UserDataEventReasonType string
 
+// ForceOrderCloseType define reason type for force order
+type ForceOrderCloseType string
+
 // Endpoints
 const (
-	baseApiMainUrl    = "https://dapi.binance.com"
+	baseApiMainUrl    = "https://eapi.binance.com"
 	baseApiTestnetUrl = "https://testnet.binancefuture.com"
 )
 
@@ -79,6 +87,9 @@ const (
 	PositionSideTypeBoth  PositionSideType = "BOTH"
 	PositionSideTypeLong  PositionSideType = "LONG"
 	PositionSideTypeShort PositionSideType = "SHORT"
+
+	OptionSideTypeCall OptionSideType = "CALL"
+	OptionSideTypePut  OptionSideType = "PUT"
 
 	OrderTypeLimit              OrderType = "LIMIT"
 	OrderTypeMarket             OrderType = "MARKET"
@@ -95,7 +106,6 @@ const (
 
 	NewOrderRespTypeACK    NewOrderRespType = "ACK"
 	NewOrderRespTypeRESULT NewOrderRespType = "RESULT"
-	NewOrderRespTypeFULL   NewOrderRespType = "FULL"
 
 	OrderExecutionTypeNew         OrderExecutionType = "NEW"
 	OrderExecutionTypePartialFill OrderExecutionType = "PARTIAL_FILL"
@@ -111,6 +121,9 @@ const (
 	OrderStatusTypeCanceled        OrderStatusType = "CANCELED"
 	OrderStatusTypeRejected        OrderStatusType = "REJECTED"
 	OrderStatusTypeExpired         OrderStatusType = "EXPIRED"
+	OrderStatusTypeNewInsurance    OrderStatusType = "NEW_INSURANCE"
+	OrderStatusTypeNewADL          OrderStatusType = "NEW_ADL"
+	OrderStatusTypeAccepted        OrderStatusType = "ACCEPTED"
 
 	SymbolTypeFuture SymbolType = "FUTURE"
 
@@ -131,6 +144,7 @@ const (
 	SymbolFilterTypeMarketLotSize    SymbolFilterType = "MARKET_LOT_SIZE"
 	SymbolFilterTypeMaxNumOrders     SymbolFilterType = "MAX_NUM_ORDERS"
 	SymbolFilterTypeMaxNumAlgoOrders SymbolFilterType = "MAX_NUM_ALGO_ORDERS"
+	SymbolFilterTypeMinNotional      SymbolFilterType = "MIN_NOTIONAL"
 
 	SideEffectTypeNoSideEffect SideEffectType = "NO_SIDE_EFFECT"
 	SideEffectTypeMarginBuy    SideEffectType = "MARGIN_BUY"
@@ -138,6 +152,8 @@ const (
 
 	MarginTypeIsolated MarginType = "ISOLATED"
 	MarginTypeCrossed  MarginType = "CROSSED"
+
+	ContractTypePerpetual ContractType = "PERPETUAL"
 
 	UserDataEventTypeListenKeyExpired    UserDataEventType = "listenKeyExpired"
 	UserDataEventTypeMarginCall          UserDataEventType = "MARGIN_CALL"
@@ -160,6 +176,9 @@ const (
 	UserDataEventReasonTypeOptionsPremiumFee   UserDataEventReasonType = "OPTIONS_PREMIUM_FEE"
 	UserDataEventReasonTypeOptionsSettleProfit UserDataEventReasonType = "OPTIONS_SETTLE_PROFIT"
 
+	ForceOrderCloseTypeLiquidation ForceOrderCloseType = "LIQUIDATION"
+	ForceOrderCloseTypeADL         ForceOrderCloseType = "ADL"
+
 	timestampKey  = "timestamp"
 	signatureKey  = "signature"
 	recvWindowKey = "recvWindow"
@@ -177,57 +196,45 @@ func newJSON(data []byte) (j *simplejson.Json, err error) {
 	return j, nil
 }
 
-// getApiEndpoint return the base endpoint of the WS according the UseTestnet flag
+// getApiEndpoint return the base endpoint of the WS
 func getApiEndpoint() string {
-	if UseTestnet {
-		return baseApiTestnetUrl
-	}
 	return baseApiMainUrl
 }
 
 // NewClient initialize an API client instance with API key and secret key.
 // You should always call this function before using this SDK.
 // Services will be created by the form client.NewXXXService().
-func NewClient(apiKey, secretKey string, sf func(raw string) (string, error)) *Client {
-	cl := Client{
+func NewClient(apiKey, secretKey string) *Client {
+	return &Client{
 		APIKey:     apiKey,
 		SecretKey:  secretKey,
 		BaseURL:    getApiEndpoint(),
 		UserAgent:  "Binance/golang",
 		HTTPClient: http.DefaultClient,
-		signFunc:   sf,
 		Logger:     log.New(os.Stderr, "Binance-golang ", log.LstdFlags),
 	}
-
-	if cl.signFunc == nil {
-		cl.signFunc = func(raw string) (string, error) {
-			mac := hmac.New(sha256.New, []byte(cl.SecretKey))
-			_, err := mac.Write([]byte(raw))
-			if err != nil {
-				return "", err
-			}
-			return hex.EncodeToString(mac.Sum(nil)), nil
-		}
-	}
-
-	return &cl
 }
 
 // NewProxiedClient passing a proxy url
-func NewProxiedClient(apiKey, secretKey, proxyUrl string, sf func(raw string) (string, error)) *Client {
+func NewProxiedClient(apiKey, secretKey, proxyUrl string) *Client {
 	proxy, err := url.Parse(proxyUrl)
 	if err != nil {
 		log.Fatal(err)
 	}
-	cl := NewClient(apiKey, secretKey, sf)
-	cl.HTTPClient = &http.Client{
-		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxy),
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
+	tr := &http.Transport{
+		Proxy:           http.ProxyURL(proxy),
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-
-	return cl
+	return &Client{
+		APIKey:    apiKey,
+		SecretKey: secretKey,
+		BaseURL:   getApiEndpoint(),
+		UserAgent: "Binance/golang",
+		HTTPClient: &http.Client{
+			Transport: tr,
+		},
+		Logger: log.New(os.Stderr, "Binance-golang ", log.LstdFlags),
+	}
 }
 
 type doFunc func(req *http.Request) (*http.Response, error)
@@ -243,7 +250,6 @@ type Client struct {
 	Logger     *log.Logger
 	TimeOffset int64
 	do         doFunc
-	signFunc   func(raw string) (string, error)
 }
 
 func (c *Client) debug(format string, v ...interface{}) {
@@ -285,12 +291,14 @@ func (c *Client) parseRequest(r *request, opts ...RequestOption) (err error) {
 	}
 
 	if r.secType == secTypeSigned {
-		sign, err := c.signFunc(fmt.Sprintf("%s%s", queryString, bodyString))
+		raw := fmt.Sprintf("%s%s", queryString, bodyString)
+		mac := hmac.New(sha256.New, []byte(c.SecretKey))
+		_, err = mac.Write([]byte(raw))
 		if err != nil {
 			return err
 		}
 		v := url.Values{}
-		v.Set(signatureKey, sign)
+		v.Set(signatureKey, fmt.Sprintf("%x", (mac.Sum(nil))))
 		if queryString == "" {
 			queryString = v.Encode()
 		} else {
@@ -308,14 +316,14 @@ func (c *Client) parseRequest(r *request, opts ...RequestOption) (err error) {
 	return nil
 }
 
-func (c *Client) callAPI(ctx context.Context, r *request, opts ...RequestOption) (data []byte, err error) {
+func (c *Client) callAPI(ctx context.Context, r *request, opts ...RequestOption) (data []byte, header *http.Header, err error) {
 	err = c.parseRequest(r, opts...)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, &http.Header{}, err
 	}
 	req, err := http.NewRequest(r.method, r.fullURL, r.body)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, &http.Header{}, err
 	}
 	req = req.WithContext(ctx)
 	req.Header = r.header
@@ -326,11 +334,11 @@ func (c *Client) callAPI(ctx context.Context, r *request, opts ...RequestOption)
 	}
 	res, err := f(req)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, &http.Header{}, err
 	}
-	data, err = io.ReadAll(res.Body)
+	data, err = ioutil.ReadAll(res.Body)
 	if err != nil {
-		return []byte{}, err
+		return []byte{}, &http.Header{}, err
 	}
 	defer func() {
 		cerr := res.Body.Close()
@@ -350,9 +358,9 @@ func (c *Client) callAPI(ctx context.Context, r *request, opts ...RequestOption)
 		if e != nil {
 			c.debug("failed to unmarshal json: %s", e)
 		}
-		return nil, apiErr
+		return nil, &http.Header{}, apiErr
 	}
-	return data, nil
+	return data, &res.Header, nil
 }
 
 // SetApiEndpoint set api Endpoint
@@ -361,54 +369,14 @@ func (c *Client) SetApiEndpoint(url string) *Client {
 	return c
 }
 
-// NewPingService init ping service
-func (c *Client) NewPingService() *PingService {
-	return &PingService{c: c}
-}
-
-// NewServerTimeService init server time service
-func (c *Client) NewServerTimeService() *ServerTimeService {
-	return &ServerTimeService{c: c}
-}
-
-// NewSetServerTimeService init set server time service
-func (c *Client) NewSetServerTimeService() *SetServerTimeService {
-	return &SetServerTimeService{c: c}
-}
-
 // NewKlinesService init klines service
 func (c *Client) NewKlinesService() *KlinesService {
 	return &KlinesService{c: c}
 }
 
-// NewListPriceChangeStatsService init list prices change stats service
-func (c *Client) NewListPriceChangeStatsService() *ListPriceChangeStatsService {
-	return &ListPriceChangeStatsService{c: c}
-}
-
-// NewListPricesService init listing prices service
-func (c *Client) NewListPricesService() *ListPricesService {
-	return &ListPricesService{c: c}
-}
-
-// NewListBookTickersService init listing booking tickers service
-func (c *Client) NewListBookTickersService() *ListBookTickersService {
-	return &ListBookTickersService{c: c}
-}
-
-// NewStartUserStreamService init starting user stream service
-func (c *Client) NewStartUserStreamService() *StartUserStreamService {
-	return &StartUserStreamService{c: c}
-}
-
-// NewKeepaliveUserStreamService init keep alive user stream service
-func (c *Client) NewKeepaliveUserStreamService() *KeepaliveUserStreamService {
-	return &KeepaliveUserStreamService{c: c}
-}
-
-// NewCloseUserStreamService init closing user stream service
-func (c *Client) NewCloseUserStreamService() *CloseUserStreamService {
-	return &CloseUserStreamService{c: c}
+// NewDepthService init depth service
+func (c *Client) NewDepthService() *DepthService {
+	return &DepthService{c: c}
 }
 
 // NewExchangeInfoService init exchange info service
@@ -419,6 +387,11 @@ func (c *Client) NewExchangeInfoService() *ExchangeInfoService {
 // NewCreateOrderService init creating order service
 func (c *Client) NewCreateOrderService() *CreateOrderService {
 	return &CreateOrderService{c: c}
+}
+
+// NewListOpenOrdersService init list open orders service
+func (c *Client) NewListOpenOrdersService() *ListOpenOrdersService {
+	return &ListOpenOrdersService{c: c}
 }
 
 // NewGetOrderService init get order service
@@ -436,57 +409,12 @@ func (c *Client) NewCancelAllOpenOrdersService() *CancelAllOpenOrdersService {
 	return &CancelAllOpenOrdersService{c: c}
 }
 
-// NewListOpenOrdersService init list open orders service
-func (c *Client) NewListOpenOrdersService() *ListOpenOrdersService {
-	return &ListOpenOrdersService{c: c}
+// NewCancelMultipleOrdersService init cancel multiple orders service
+func (c *Client) NewCancelMultipleOrdersService() *CancelMultiplesOrdersService {
+	return &CancelMultiplesOrdersService{c: c}
 }
 
-// NewListOrdersService init listing orders service
-func (c *Client) NewListOrdersService() *ListOrdersService {
-	return &ListOrdersService{c: c}
-}
-
-// NewListLiquidationOrdersService init funding rate service
-func (c *Client) NewListLiquidationOrdersService() *ListLiquidationOrdersService {
-	return &ListLiquidationOrdersService{c: c}
-}
-
-// NewGetAccountService init account service
-func (c *Client) NewGetAccountService() *GetAccountService {
-	return &GetAccountService{c: c}
-}
-
-// NewGetBalanceService init balance service
-func (c *Client) NewGetBalanceService() *GetBalanceService {
-	return &GetBalanceService{c: c}
-}
-
-// NewGetPositionRiskService init getting position risk service
-func (c *Client) NewGetPositionRiskService() *GetPositionRiskService {
-	return &GetPositionRiskService{c: c}
-}
-
-// NewChangeLeverageService init change leverage service
-func (c *Client) NewChangeLeverageService() *ChangeLeverageService {
-	return &ChangeLeverageService{c: c}
-}
-
-// NewChangeMarginTypeService init change margin type service
-func (c *Client) NewChangeMarginTypeService() *ChangeMarginTypeService {
-	return &ChangeMarginTypeService{c: c}
-}
-
-// NewUpdatePositionMarginService init update position margin
-func (c *Client) NewUpdatePositionMarginService() *UpdatePositionMarginService {
-	return &UpdatePositionMarginService{c: c}
-}
-
-// NewChangePositionModeService init change position mode service
-func (c *Client) NewChangePositionModeService() *ChangePositionModeService {
-	return &ChangePositionModeService{c: c}
-}
-
-// NewGetPositionModeService init get position mode service
-func (c *Client) NewGetPositionModeService() *GetPositionModeService {
-	return &GetPositionModeService{c: c}
+// NewCreateBatchOrdersService init creating batch order service
+func (c *Client) NewCreateBatchOrdersService() *CreateBatchOrdersService {
+	return &CreateBatchOrdersService{c: c}
 }
