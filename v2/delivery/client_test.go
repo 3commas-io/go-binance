@@ -115,7 +115,7 @@ type mockedClient struct {
 
 func newMockedClient(apiKey, secretKey string) *mockedClient {
 	m := new(mockedClient)
-	m.Client = NewClient(apiKey, secretKey)
+	m.Client = NewClient(apiKey, secretKey, nil)
 	return m
 }
 
