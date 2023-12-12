@@ -1260,7 +1260,7 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeStreamExpired() {
 	}`)
 	expectedEvent := &WsUserDataEvent{
 		Event: "listenKeyExpired",
-		Time:  1576653824250,
+		Time:  "1576653824250",
 	}
 	s.testWsUserDataServe(data, expectedEvent)
 }
@@ -1284,7 +1284,7 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeMarginCall() {
     }`)
 	expectedEvent := &WsUserDataEvent{
 		Event:              "MARGIN_CALL",
-		Time:               1587727187525,
+		Time:               "1587727187525",
 		Alias:              "SfsR",
 		CrossWalletBalance: "3.16812045",
 		MarginCallPositions: []WsPosition{
@@ -1362,7 +1362,7 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeAccountUpdate() {
 	}`)
 	expectedEvent := &WsUserDataEvent{
 		Event:           "ACCOUNT_UPDATE",
-		Time:            1564745798939,
+		Time:            "1564745798939",
 		TransactionTime: 1564745798938,
 		Alias:           "SfsR",
 		AccountUpdate: WsAccountUpdate{
@@ -1461,7 +1461,7 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeOrderTradeUpdate() {
 	}`)
 	expectedEvent := &WsUserDataEvent{
 		Event:           "ORDER_TRADE_UPDATE",
-		Time:            1568879465651,
+		Time:            "1568879465651",
 		TransactionTime: 1568879465650,
 		Alias:           "SfsR",
 		OrderTradeUpdate: WsOrderTradeUpdate{
@@ -1550,7 +1550,7 @@ func (s *websocketServiceTestSuite) TestWsCombinedUserDataServeOrderTradeUpdate(
 		Stream: "fakeListenKey",
 		Data: WsUserDataEvent{
 			Event:           "ORDER_TRADE_UPDATE",
-			Time:            1568879465651,
+			Time:            "1568879465651",
 			TransactionTime: 1568879465650,
 			Alias:           "SfsR",
 			OrderTradeUpdate: WsOrderTradeUpdate{

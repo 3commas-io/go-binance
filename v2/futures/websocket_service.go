@@ -966,7 +966,7 @@ type WsCombinedUserDataEvent struct {
 // WsUserDataEvent define user data event
 type WsUserDataEvent struct {
 	Event               UserDataEventType     `json:"e"`
-	Time                int64                 `json:"E"`
+	Time                json.Number           `json:"E"`
 	CrossWalletBalance  string                `json:"cw"`
 	MarginCallPositions []WsPosition          `json:"p"`
 	TransactionTime     int64                 `json:"T"`
