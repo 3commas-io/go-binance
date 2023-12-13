@@ -208,7 +208,7 @@ func NewClient(apiKey, secretKey string, sf func(raw string) (string, error)) *C
 		SecretKey:  secretKey,
 		BaseURL:    getApiEndpoint(),
 		UserAgent:  "Binance/golang",
-		HTTPClient: http.DefaultClient,
+		HTTPClient: &http.Client{},
 		signFunc:   sf,
 		Logger:     log.New(os.Stderr, "Binance-golang ", log.LstdFlags),
 	}

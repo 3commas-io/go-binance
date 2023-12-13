@@ -279,7 +279,7 @@ func NewClient(us bool, apiKey, secretKey string) *Client {
 		SecretKey:  secretKey,
 		BaseURL:    getAPIEndpoint(us),
 		UserAgent:  "Binance/golang",
-		HTTPClient: http.DefaultClient,
+		HTTPClient: &http.Client{},
 		Logger:     log.New(os.Stderr, "Binance-golang ", log.LstdFlags),
 	}
 }
