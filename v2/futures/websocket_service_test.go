@@ -1640,44 +1640,6 @@ func (s *websocketServiceTestSuite) TestWsUserDataServeStreamExpired() {
 	s.testWsUserDataServe(data, expectedEvent)
 }
 
-func (s *websocketServiceTestSuite) TestWsUserDataServeMarginCall() {
-	data := []byte(`{
-		"e":"MARGIN_CALL",
-		"E":1587727187525,
-		"cw":"3.16812045",
-		"p":[
-			{
-				"s":"ETHUSDT",
-				"ps":"LONG",
-				"pa":"1.327",
-				"mt":"CROSSED",
-				"iw":"0",
-				"mp":"187.17127",
-				"up":"-1.166074",
-				"mm":"1.614445"
-			}
-		]
-	}`)
-	expectedEvent := &WsUserDataEvent{
-		Event:              "MARGIN_CALL",
-		Time:               "1587727187525",
-		CrossWalletBalance: "3.16812045",
-		MarginCallPositions: []WsPosition{
-			{
-				Symbol:                    "ETHUSDT",
-				Side:                      "LONG",
-				Amount:                    "1.327",
-				MarginType:                "CROSSED",
-				IsolatedWallet:            "0",
-				MarkPrice:                 "187.17127",
-				UnrealizedPnL:             "-1.166074",
-				MaintenanceMarginRequired: "1.614445",
-			},
-		},
-	}
-	s.testWsUserDataServe(data, expectedEvent)
-}
-
 func (s *websocketServiceTestSuite) TestWsUserDataServeAccountUpdate() {
 	data := []byte(`{
 		"e": "ACCOUNT_UPDATE",
@@ -1976,10 +1938,6 @@ func (s *websocketServiceTestSuite) assertUserDataEvent(e, a *WsUserDataEvent) {
 	r.Equal(e.Event, a.Event, "Event")
 	r.Equal(e.Time, a.Time, "Time")
 	r.Equal(e.CrossWalletBalance, a.CrossWalletBalance, "CrossWalletBalance")
-	for i, e := range e.MarginCallPositions {
-		a := a.MarginCallPositions[i]
-		s.assertPosition(e, a)
-	}
 	r.Equal(e.TransactionTime, a.TransactionTime, "TransactionTime")
 	s.assertAccountUpdate(e.AccountUpdate, a.AccountUpdate)
 	s.assertOrderTradeUpdate(e.OrderTradeUpdate, a.OrderTradeUpdate)
@@ -1992,10 +1950,6 @@ func (s *websocketServiceTestSuite) assertCombinedUserDataEvent(e, a *WsCombined
 	r.Equal(e.Data.Event, a.Data.Event, "Event")
 	r.Equal(e.Data.Time, a.Data.Time, "Time")
 	r.Equal(e.Data.CrossWalletBalance, a.Data.CrossWalletBalance, "CrossWalletBalance")
-	for i, e := range e.Data.MarginCallPositions {
-		a := a.Data.MarginCallPositions[i]
-		s.assertPosition(e, a)
-	}
 	r.Equal(e.Data.TransactionTime, a.Data.TransactionTime, "TransactionTime")
 	s.assertAccountUpdate(e.Data.AccountUpdate, a.Data.AccountUpdate)
 	s.assertOrderTradeUpdate(e.Data.OrderTradeUpdate, a.Data.OrderTradeUpdate)
